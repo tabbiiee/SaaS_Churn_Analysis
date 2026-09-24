@@ -313,3 +313,260 @@ ORDER BY subscription_id
 -- cleaning stage.
 =================================================
 */
+SELECT 
+    SUM(CASE WHEN subscription_id IS NULL THEN 1 ELSE 0 END) AS missing_subscription_id,
+    SUM(CASE WHEN customer_id IS NULL THEN 1 ELSE 0 END) AS missing_customer_id,
+    SUM(CASE WHEN subscription_plan IS NULL THEN 1 ELSE 0 END) AS missing_subscription_plan,
+    SUM(CASE WHEN billing_cycle IS NULL THEN 1 ELSE 0 END) AS missing_billing_cycle,
+    SUM(CASE WHEN monthly_price IS NULL THEN 1 ELSE 0 END) AS missing_monthly_price,
+    SUM(CASE WHEN start_date IS NULL THEN 1 ELSE 0 END) AS missing_start_date,
+    SUM(CASE WHEN end_date IS NULL THEN 1 ELSE 0 END) AS missing_end_date,
+    SUM(CASE WHEN status IS NULL THEN 1 ELSE 0 END) AS missing_status,
+    SUM(CASE WHEN cancellation_date IS NULL THEN 1 ELSE 0 END) AS missing_cancellation_date,
+    SUM(CASE WHEN cancellation_reason IS NULL THEN 1 ELSE 0 END) AS missing_cancellation_reason
+FROM raw.subscriptions;
+
+SELECT
+    status,
+    COUNT(*) AS record_count
+FROM raw.subscriptions
+WHERE cancellation_date IS NULL
+GROUP BY status
+ORDER BY status;
+
+SELECT
+    status,
+    COUNT(*) AS record_count
+FROM raw.subscriptions
+WHERE end_date IS NULL
+GROUP BY status;
+
+/*
+=================================================
+-- SUBSCRIPTIONS: MISSING VALUE FINDINGS
+=================================================
+
+-- end_date contains 4,145 NULL values.
+-- These records correspond to active subscriptions,
+-- so the missing values are expected.
+
+-- cancellation_date contains 4,145 NULL values.
+-- These records correspond to active subscriptions,
+-- so the missing values are expected.
+
+-- cancellation_reason contains missing values for
+-- active subscriptions and some cancelled subscriptions.
+-- Missing cancellation reasons for cancelled subscriptions
+-- will require further investigation during cleaning.
+=================================================
+*/
+
+SELECT
+    subscription_plan,
+    COUNT(*) AS record_count
+FROM raw.subscriptions
+GROUP BY subscription_plan
+ORDER BY subscription_plan;
+
+SELECT
+    billing_cycle,
+    COUNT(*) AS record_count
+FROM raw.subscriptions
+GROUP BY billing_cycle
+ORDER BY billing_cycle;
+
+SELECT
+    status,
+    COUNT(*) AS record_count
+FROM raw.subscriptions
+GROUP BY status
+ORDER BY status;
+
+/*
+=================================================
+-- SUBSCRIPTIONS: CATEGORICAL VALUE FINDINGS
+=================================================
+
+-- subscription_plan contains inconsistent capitalization.
+-- The 'business' value should be standardized to 'Business'.
+
+-- billing_cycle values are formatted consistently, with
+-- 'Annual' and 'Monthly' as the observed values.
+
+-- status contains whitespace inconsistency.
+-- 53 records contain ' Active ' instead of 'Active'.
+
+-- The status values otherwise consist of 'Active' and
+-- 'Cancelled'.
+=================================================
+*/
+--===========Cancellation reason=================
+SELECT
+    cancellation_reason,
+    COUNT(*) AS record_count
+FROM raw.subscriptions
+GROUP BY cancellation_reason
+ORDER BY cancellation_reason;
+
+SELECT
+    status,
+    COUNT(*) AS record_count,
+    SUM(CASE 
+            WHEN cancellation_reason IS NULL 
+            THEN 1 ELSE 0 
+        END) AS missing_reason
+FROM raw.subscriptions
+GROUP BY status;
+/*
+→ cancellation_reason: consistent
+*/
+--============Dates====================
+SELECT TOP 300
+    start_date
+FROM raw.subscriptions
+ORDER BY subscription_id;
+
+SELECT TOP 300
+    end_date
+FROM raw.subscriptions
+ORDER BY subscription_id;
+
+SELECT TOP 300
+    cancellation_date
+FROM raw.subscriptions
+WHERE cancellation_date IS NOT NULL
+ORDER BY subscription_id;
+/*
+=================================================
+-- SUBSCRIPTIONS: DATE FORMAT FINDINGS
+=================================================
+
+-- start_date,end_date and cancellation_date contains three different date formats:
+-- YYYY-MM-DD
+-- MM/DD/YYYY
+-- Mon DD, YYYY.
+-- The date values will be standardized to a consistent
+-- DATE format during the cleaning stage.
+=================================================
+*/
+--=================================================
+-- SUBSCRIPTIONS: VALIDATE MONTHLY PRICE
+--=================================================
+SELECT 
+    subscription_plan,
+    monthly_price,
+    COUNT (*) AS record_count
+FROM raw.subscriptions
+GROUP BY 
+    subscription_plan,
+    monthLy_price
+ORDER BY 
+    subscription_plan,
+    monthLy_price
+
+/*
+=================================================
+-- SUBSCRIPTIONS: MONTHLY PRICE FINDINGS
+=================================================
+
+-- monthly_price contains no missing values.
+
+-- Monthly prices are consistently formatted and
+-- correctly correspond to subscription plans:
+
+-- Starter       = 1,500
+-- Professional  = 4,500
+-- Business      = 9,000
+-- Enterprise    = 20,000
+
+-- No pricing mismatches were identified.
+=================================================
+*/
+/*
+=================================================
+-- SUBSCRIPTIONS: BUSINESS RULE VALIDATION
+=================================================
+
+-- Business Rule 1:
+-- Active subscriptions should not have a
+-- cancellation date.
+
+-- Result:
+-- 0 active subscriptions have a cancellation date,
+-- so this rule is satisfied.
+
+
+-- Business Rule 2:
+-- Cancelled subscriptions should have a
+-- cancellation date.
+
+-- Result:
+-- 0 cancelled subscriptions are missing a
+-- cancellation date, so this rule is satisfied.
+
+
+-- Status Standardization Check:
+-- Status values were checked after trimming
+-- leading/trailing whitespace.
+
+-- Result:
+-- 'Active' and ' Active ' represent the same status
+-- value and will be standardized to 'Active' during
+-- the cleaning stage.
+=================================================
+*/
+-- Business Rule 1:
+SELECT
+    COUNT(*) AS active_with_cancellation_date
+FROM raw.subscriptions
+WHERE TRIM(status) = 'Active'
+AND cancellation_date IS NOT NULL
+
+-- Business Rule 2:
+SELECT
+    COUNT(*) AS cancelled_without_cancellation_date
+FROM raw.subscriptions
+WHERE TRIM(status) = 'Cancelled'
+AND cancellation_date IS NULL
+
+-- Status Standardization Check
+SELECT
+    TRIM(status) AS status,
+    COUNT(*) AS record_count
+FROM raw.subscriptions
+GROUP BY TRIM(status)
+ORDER BY status;
+
+--=========================================
+--SUBSCRIPTIONS: CANCELLATION REASON
+--=========================================
+SELECT
+    TRIM(cancellation_reason) AS cancellation_reason,
+    COUNT(*) AS record_count
+FROM raw.subscriptions
+WHERE TRIM(status) = 'Cancelled'
+GROUP BY TRIM(cancellation_reason)
+ORDER BY record_count DESC;
+/*
+=================================================
+-- SUBSCRIPTIONS: CANCELLATION REASON FINDINGS
+=================================================
+
+-- 870 subscriptions are cancelled.
+
+-- 840 cancelled subscriptions have a recorded
+-- cancellation reason.
+
+-- 30 cancelled subscriptions contain a blank
+-- or whitespace-only cancellation reason.
+
+-- Cancellation reasons are otherwise formatted
+-- consistently.
+
+-- Blank cancellation reasons will be standardized
+-- to NULL during the cleaning stage.
+=================================================
+*/
+
+
+
