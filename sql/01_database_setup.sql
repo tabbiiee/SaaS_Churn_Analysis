@@ -1,0 +1,11 @@
+CREATE DATABASE LedgerFlow;
+GO
+
+USE LedgerFlow;
+GO
+
+CREATE SCHEMA raw;
+GO
+
+CREATE SCHEMA clean;
+GO
