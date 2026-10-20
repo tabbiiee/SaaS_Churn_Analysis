@@ -646,6 +646,12 @@ SELECT
 FROM raw.payments
 WHERE transaction_id IS NULL
 
+-- Check for NULL customer IDs
+SELECT 
+    COUNT(*) AS missing_customer_id
+FROM raw.payments
+WHERE customer_id IS NULL
+
 
 -- Check for empty or whitespace-only payment IDs
 SELECT
@@ -659,11 +665,17 @@ SELECT
 FROM raw.payments
 WHERE TRIM(transaction_id) = ''
 
+-- Check for empty or whitespace-only customer IDs
+SELECT 
+    COUNT(*) AS blank_customer_id
+FROM raw.payments
+WHERE TRIM(customer_id) = ''
 
 /*
 FINDING:
 -- No NULL or blank payment_id values were identified.
 -- No NULL or blank transaction_id values were identified.
+-- No NULL or blank customer_id values were identified.
 */
 
 
@@ -702,6 +714,26 @@ HAVING COUNT (*) > 1
 The duplicated IDs will be investigated further before deciding how to handle them during cleaning.
 */
 
+-- Identify customer IDs appearing more than once
+SELECT
+    customer_id,
+    COUNT(*) AS occurrence_count
+FROM raw.payments
+GROUP BY customer_id
+HAVING COUNT(*) > 1
+
+-- Identify distinct customer IDs 
+SELECT DISTINCT 
+    COUNT(DISTINCT customer_id) AS total_customer_ids
+FROM raw.payments
+/*
+-- Customer duplicate findings
+-- Multiple customer IDs appear more than once in the payments table.
+-- Approximately 5,000 distinct customer IDs were identified.
+-- Repeated customer IDs are expected because a customer can have multiple payment records.
+-- These repetitions are not considered duplicates by themselves and will not automatically be removed.
+-- Customer IDs will be validated against the customers table during further data-quality checks.
+*/
 
 -- =========================================================
 -- 4. PAYMENTS: INSPECT DUPLICATED RECORDS
@@ -739,11 +771,60 @@ FINDINGS:
 -- Inspection confirms that all 50 duplicated payment_id pairs are exact duplicates across all nine columns.
 -- Inspection also confirms that the duplicated transaction_id records are exact duplicates.
 -- These exact duplicate records will be removed during the cleaning stage.
-
-
-
-============================================================
-END OF PAYMENTS PROFILING
-============================================================
 */
+
+-- =========================================================
+-- PAYMENTS: CUSTOMER PAYMENT DISTRIBUTION
+-- =========================================================
+
+SELECT
+    customer_id,
+    COUNT(*) AS total_payments
+FROM raw.payments
+GROUP BY customer_id
+ORDER BY total_payments DESC;
+
+
+-- FINDINGS:
+-- Customers have between 1 and 37 payment records.
+-- The highest number of payment records for a single customer is 37.
+-- The lowest number of payment records for a single customer is 1.
+-- Multiple payment records per customer are expected and are not considered duplicates by themselves.
+
+
+-- =========================================================
+-- PAYMENTS: CUSTOMER_ID FORMATTING CONSISTENCY
+-- =========================================================
+
+SELECT
+    customer_id
+FROM raw.payments
+WHERE customer_id <> TRIM(customer_id);
+
+
+-- FINDINGS:
+-- No leading or trailing spaces were detected in customer_id.
+-- Customer IDs appear consistently formatted with respect to surrounding whitespace.
+
+
+-- =========================================================
+-- PAYMENTS: CUSTOMER_ID REFERENTIAL INTEGRITY
+-- =========================================================
+
+SELECT
+    p.customer_id
+FROM raw.payments AS p
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM raw.customers AS c
+    WHERE c.customer_id = p.customer_id
+);
+
+-- FINDINGS:
+-- No unmatched customer_id values were found in raw.payments.
+-- All customer IDs referenced in the payments table have matching records in raw.customers.
+--============================================================
+--END OF PAYMENTS PROFILING
+--============================================================
+
 
