@@ -652,6 +652,12 @@ SELECT
 FROM raw.payments
 WHERE customer_id IS NULL
 
+-- Check for NULL subcription IDs
+SELECT 
+    COUNT(*) AS missing_subscription_id
+FROM raw.payments
+WHERE subscription_id IS NULL
+
 
 -- Check for empty or whitespace-only payment IDs
 SELECT
@@ -671,11 +677,18 @@ SELECT
 FROM raw.payments
 WHERE TRIM(customer_id) = ''
 
+-- Check for empty or whitespace-only subscription IDs
+SELECT 
+    COUNT(*) AS blank_subscription_id
+FROM raw.payments
+WHERE TRIM(subscription_id) = ''
+
 /*
 FINDING:
 -- No NULL or blank payment_id values were identified.
 -- No NULL or blank transaction_id values were identified.
 -- No NULL or blank customer_id values were identified.
+-- No NULL or blank subscription_id values were identified.
 */
 
 
@@ -695,11 +708,19 @@ HAVING COUNT(*) > 1;
 
 SELECT
     transaction_id,
-    COUNT (*) AS occurence_count
+    COUNT (*) AS occurrence_count
 FROM raw.payments
 GROUP BY transaction_id
 HAVING COUNT (*) > 1
 
+-- Identify subscription IDs appearing more than once
+SELECT
+    subscription_id,
+    COUNT (*) AS occurrence_count
+FROM raw.payments
+GROUP BY subscription_id
+HAVING COUNT (*) > 1
+ORDER BY occurence_count DESC
 /*
 -- DUPLICATE FINDINGS
 -- 50 payment IDs appear more than once.
@@ -712,6 +733,12 @@ HAVING COUNT (*) > 1
 -- and whether the associated records are exact duplicates.
 
 The duplicated IDs will be investigated further before deciding how to handle them during cleaning.
+
+-- Multiple subscription IDs appear more than once.
+-- Among the returned IDs, occurrence counts range from 2 to 37 payment records.
+-- Repeated subscription IDs may represent legitimate recurring payments and are not automatically duplicates.
+-- Further inspection is required before determining whether any repeated records are exact duplicates.
+
 */
 
 -- Identify customer IDs appearing more than once
@@ -764,12 +791,25 @@ WHERE transaction_id IN (
 ORDER BY transaction_id
 
 
+-- Retrieve all records associated with duplicated subscription IDs
+SELECT *
+FROM raw.payments
+WHERE subscription_id IN (
+    SELECT
+    subscription_id
+    FROM raw.payments
+    GROUP BY subscription_id
+    HAVING COUNT (*) > 1
+)
+ORDER BY subscription_id
+
 /*
 FINDINGS:
 -- 50 payment IDs and 50 transaction IDs appear more than once.
 -- Each duplicated payment ID appears exactly twice.
 -- Inspection confirms that all 50 duplicated payment_id pairs are exact duplicates across all nine columns.
 -- Inspection also confirms that the duplicated transaction_id records are exact duplicates.
+-- Subscription_id values are also exact duplicates.
 -- These exact duplicate records will be removed during the cleaning stage.
 */
 
@@ -793,24 +833,9 @@ ORDER BY total_payments DESC;
 
 
 -- =========================================================
--- PAYMENTS: CUSTOMER_ID FORMATTING CONSISTENCY
+-- PAYMENTS: REFERENTIAL INTEGRITY
 -- =========================================================
-
-SELECT
-    customer_id
-FROM raw.payments
-WHERE customer_id <> TRIM(customer_id);
-
-
--- FINDINGS:
--- No leading or trailing spaces were detected in customer_id.
--- Customer IDs appear consistently formatted with respect to surrounding whitespace.
-
-
--- =========================================================
--- PAYMENTS: CUSTOMER_ID REFERENTIAL INTEGRITY
--- =========================================================
-
+-- CUSTOMER_ID REFERENTIAL INTEGRITY
 SELECT
     p.customer_id
 FROM raw.payments AS p
@@ -823,6 +848,44 @@ WHERE NOT EXISTS (
 -- FINDINGS:
 -- No unmatched customer_id values were found in raw.payments.
 -- All customer IDs referenced in the payments table have matching records in raw.customers.
+
+-- SUBSCRIPTION_ID REFERENTIAL INTEGRITY
+SELECT
+    p.subscription_id
+FROM raw.payments AS p
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM raw.subscriptions AS s
+    WHERE s.subscription_id = p.subscription_id
+);
+- FINDINGS:
+-- No unmatched subscription_id values were found in raw.payments.
+-- All subscription IDs referenced in the payments table have matching records in raw.subscriptions.
+
+-- =========================================================
+-- PAYMENTS: FORMATTING CONSISTENCY
+-- =========================================================
+-- CUSTOMER_ID FORMATTING CONSISTENCY
+SELECT
+    customer_id
+FROM raw.payments
+WHERE customer_id <> TRIM(customer_id);
+
+
+-- FINDINGS:
+-- No leading or trailing spaces were detected in customer_id.
+-- Customer IDs appear consistently formatted with respect to surrounding whitespace.
+
+-- SUBSCRIPTION_ID FORMATTING CONSISTENCY
+SELECT
+    subscription_id
+FROM raw.payments
+WHERE subscription_id <> TRIM(subscription_id);
+
+-- FINDINGS:
+-- No leading or trailing spaces were detected in subscription_id.
+-- Subscription IDs appear consistently formatted with respect to surrounding whitespace.
+
 --============================================================
 --END OF PAYMENTS PROFILING
 --============================================================
