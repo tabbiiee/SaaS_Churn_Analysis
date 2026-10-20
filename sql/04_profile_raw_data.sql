@@ -658,6 +658,11 @@ SELECT
 FROM raw.payments
 WHERE subscription_id IS NULL
 
+-- Check for NULL payment dates
+SELECT 
+    COUNT(*) AS missing_payment_date
+FROM raw.payments
+WHERE payment_date IS NULL
 
 -- Check for empty or whitespace-only payment IDs
 SELECT
@@ -683,12 +688,19 @@ SELECT
 FROM raw.payments
 WHERE TRIM(subscription_id) = ''
 
+-- Check for empty or whitespace-only payment dates
+SELECT 
+    COUNT(*) AS blank_payment_date
+FROM raw.payments
+WHERE TRIM(payment_date) = ''
+
 /*
 FINDING:
 -- No NULL or blank payment_id values were identified.
 -- No NULL or blank transaction_id values were identified.
 -- No NULL or blank customer_id values were identified.
 -- No NULL or blank subscription_id values were identified.
+-- No NULL or blank payment_date values were identified.
 */
 
 
@@ -886,6 +898,81 @@ WHERE subscription_id <> TRIM(subscription_id);
 -- No leading or trailing spaces were detected in subscription_id.
 -- Subscription IDs appear consistently formatted with respect to surrounding whitespace.
 
+-- PAYMENT DATE FORMATTING CONSISTENCY
+SELECT
+    payment_date
+FROM raw.payments
+WHERE payment_date <> TRIM(payment_date);
+
+-- FINDINGS:
+-- No leading or trailing spaces were detected in payment_date.
+-- Payment dates appear consistently formatted with respect to surrounding whitespace.
+
+--============================================================
+--PAYMENTS: DATE FORMATS
+--============================================================
+SELECT DISTINCT
+payment_date
+FROM raw.payments
+-- FINDINGS:
+-- Multiple payment_date formats were identified.
+-- Examples include YYYY-MM-DD, YYYY/MM/DD, and a text-based format such as Jul 02,2026.
+-- Inconsistent date formats may complicate date conversion.
+-- All date values will be validated before conversion during the cleaning stage.
+
+-- =========================================================
+-- PAYMENTS: INVALID PAYMENT DATE CHECK
+-- =========================================================
+
+SELECT DISTINCT
+    payment_date
+FROM raw.payments
+WHERE TRY_CONVERT(DATE, payment_date) IS NULL;
+
+--Findings
+-- Three distinct payment_date values failed conversion using the default TRY_CONVERT(DATE, payment_date) rules.
+-- These values use the DD/MM/YYYY format.
+-- The dates appear to be valid, but require explicit format handling during cleaning.
+
+-- =========================================================
+-- PAYMENTS: PAYMENT DATE RANGE
+-- =========================================================
+
+SELECT
+    MIN(COALESCE(
+        TRY_CONVERT(DATE, payment_date, 23),
+        TRY_CONVERT(DATE, payment_date, 111),
+        TRY_CONVERT(DATE, payment_date, 107),
+        TRY_CONVERT(DATE, payment_date, 103)
+    )) AS earliest_payment_date,
+    MAX(COALESCE(
+        TRY_CONVERT(DATE, payment_date, 23),
+        TRY_CONVERT(DATE, payment_date, 111),
+        TRY_CONVERT(DATE, payment_date, 107),
+        TRY_CONVERT(DATE, payment_date, 103)
+    )) AS latest_payment_date
+FROM raw.payments;
+
+-- FINDINGS:
+-- The earliest successfully converted payment date is 2023-10-01.
+-- The latest successfully converted payment date is 2026-09-21.
+-- The dataset covers payment activity from October 2023 through September 2026.
+
+-- =========================================================
+-- PAYMENTS: FUTURE PAYMENT DATE CHECK
+-- =========================================================
+
+SELECT *
+FROM raw.payments
+WHERE COALESCE(
+    TRY_CONVERT(DATE, payment_date, 23),
+    TRY_CONVERT(DATE, payment_date, 111),
+    TRY_CONVERT(DATE, payment_date, 107),
+    TRY_CONVERT(DATE, payment_date, 103)
+) > CAST(GETDATE() AS DATE);
+
+-- FINDINGS:
+-- No future payment dates were identified among the payment_date values successfully converted using the tested date formats.
 --============================================================
 --END OF PAYMENTS PROFILING
 --============================================================
