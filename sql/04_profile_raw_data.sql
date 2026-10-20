@@ -264,6 +264,9 @@ WHERE signup_date LIKE '___ __, ____';
 
 -- signup_date contains three different date formats:
 -- YYYY-MM-DD, MM/DD/YYYY, and Mon DD, YYYY.
+============================================================
+END OF CUSTOMERS PROFILING
+============================================================
 =================================================
 */
 -- =================================================
@@ -566,7 +569,141 @@ ORDER BY record_count DESC;
 -- Blank cancellation reasons will be standardized
 -- to NULL during the cleaning stage.
 =================================================
+============================================================
+END OF SUBCRIPTIONS PROFILING
+============================================================
+*/
+
+/*
+============================================================
+PAYMENTS: RAW DATA PROFILING
+============================================================
+
+Objective:
+Assess the quality and structure of the raw payments data
+before proceeding to the data cleaning stage.
+
+Profiling areas:
+1. Basic structure
+2. Missing values
+3. Duplicate values
+4. Inspection of duplicated records
+
+============================================================
 */
 
 
+-- =========================================================
+-- 1. PAYMENTS: BASIC STRUCTURE
+-- =========================================================
+
+-- Inspect the first 10 records
+SELECT TOP 10 *
+FROM raw.payments;
+
+
+-- Check the total number of records
+SELECT
+    COUNT(*) AS total_rows
+FROM raw.payments;
+
+
+-- Inspect column names, data types, and nullability
+SELECT
+    COLUMN_NAME,
+    DATA_TYPE,
+    CHARACTER_MAXIMUM_LENGTH,
+    IS_NULLABLE
+FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_SCHEMA = 'raw'
+  AND TABLE_NAME = 'payments'
+ORDER BY ORDINAL_POSITION;
+
+
+/*
+FINDINGS:
+- The payments table contains 70,548 records.
+- The table contains nine columns.
+- All nine columns are stored as VARCHAR.
+- Date and numerical columns will require validation
+  and appropriate data type conversion during cleaning.
+*/
+
+
+-- =========================================================
+-- 2. PAYMENTS: MISSING VALUE CHECK - payment_id
+-- =========================================================
+
+-- Check for NULL payment IDs
+SELECT
+    COUNT(*) AS missing_payment_id
+FROM raw.payments
+WHERE payment_id IS NULL;
+
+
+-- Check for empty or whitespace-only payment IDs
+SELECT
+    COUNT(*) AS blank_payment_id
+FROM raw.payments
+WHERE TRIM(payment_id) = '';
+
+
+/*
+FINDINGS:
+- No NULL payment_id values were identified.
+- No empty or whitespace-only payment_id values
+  were identified.
+*/
+
+
+-- =========================================================
+-- 3. PAYMENTS: DUPLICATE CHECK - payment_id
+-- =========================================================
+
+-- Identify payment IDs appearing more than once
+SELECT
+    payment_id,
+    COUNT(*) AS occurrence_count
+FROM raw.payments
+GROUP BY payment_id
+HAVING COUNT(*) > 1;
+
+
+/*
+FINDINGS:
+- 50 payment IDs appear more than once.
+- Each duplicated payment ID appears exactly twice.
+- The duplicated IDs account for 100 records in total.
+*/
+
+
+-- =========================================================
+-- 4. PAYMENTS: INSPECT DUPLICATED RECORDS
+-- =========================================================
+
+-- Retrieve all records associated with duplicated payment IDs
+SELECT *
+FROM raw.payments
+WHERE payment_id IN (
+    SELECT
+        payment_id
+    FROM raw.payments
+    GROUP BY payment_id
+    HAVING COUNT(*) > 1
+)
+ORDER BY payment_id;
+
+
+/*
+FINDINGS:
+- Inspection confirms that the 50 duplicated payment ID
+  pairs are exact duplicates across all nine columns.
+- These duplicate records will be removed during cleaning.
+- The raw payments table remains unchanged during profiling.
+
+
+============================================================
+END OF PAYMENTS PROFILING
+============================================================
+*/
 
