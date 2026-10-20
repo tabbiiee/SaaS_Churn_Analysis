@@ -631,7 +631,7 @@ FINDINGS:
 
 
 -- =========================================================
--- 2. PAYMENTS: MISSING VALUE CHECK - payment_id
+-- 2. PAYMENTS: MISSING VALUE CHECK
 -- =========================================================
 
 -- Check for NULL payment IDs
@@ -640,6 +640,12 @@ SELECT
 FROM raw.payments
 WHERE payment_id IS NULL;
 
+-- Check for NULL transaction IDs
+SELECT 
+    COUNT(*) AS missing_transaction_id
+FROM raw.payments
+WHERE transaction_id IS NULL
+
 
 -- Check for empty or whitespace-only payment IDs
 SELECT
@@ -647,17 +653,22 @@ SELECT
 FROM raw.payments
 WHERE TRIM(payment_id) = '';
 
+-- Check for empty or whitespace-only transaction IDs
+SELECT 
+    COUNT(*) AS blank_transaction_id
+FROM raw.payments
+WHERE TRIM(transaction_id) = ''
+
 
 /*
-FINDINGS:
-- No NULL payment_id values were identified.
-- No empty or whitespace-only payment_id values
-  were identified.
+FINDING:
+-- No NULL or blank payment_id values were identified.
+-- No NULL or blank transaction_id values were identified.
 */
 
 
 -- =========================================================
--- 3. PAYMENTS: DUPLICATE CHECK - payment_id
+-- 3. PAYMENTS: DUPLICATE CHECK 
 -- =========================================================
 
 -- Identify payment IDs appearing more than once
@@ -668,12 +679,27 @@ FROM raw.payments
 GROUP BY payment_id
 HAVING COUNT(*) > 1;
 
+-- Identify transaction IDs appearing more than once
+
+SELECT
+    transaction_id,
+    COUNT (*) AS occurence_count
+FROM raw.payments
+GROUP BY transaction_id
+HAVING COUNT (*) > 1
 
 /*
-FINDINGS:
-- 50 payment IDs appear more than once.
-- Each duplicated payment ID appears exactly twice.
-- The duplicated IDs account for 100 records in total.
+-- DUPLICATE FINDINGS
+-- 50 payment IDs appear more than once.
+-- Each duplicated payment ID appears exactly twice.
+-- These IDs account for 100 records in total.
+
+-- 50 transaction IDs appear more than once.
+-- Further inspection is required to confirm whether
+-- the duplicated transaction IDs appear exactly twice
+-- and whether the associated records are exact duplicates.
+
+The duplicated IDs will be investigated further before deciding how to handle them during cleaning.
 */
 
 
@@ -693,13 +719,27 @@ WHERE payment_id IN (
 )
 ORDER BY payment_id;
 
+-- Retrieve all records associated with duplicated transaction IDs
+SELECT *
+FROM raw.payments
+WHERE transaction_id IN (
+    SELECT
+    transaction_id
+    FROM raw.payments
+    GROUP BY transaction_id
+    HAVING COUNT (*) > 1
+)
+ORDER BY transaction_id
+
 
 /*
 FINDINGS:
-- Inspection confirms that the 50 duplicated payment ID
-  pairs are exact duplicates across all nine columns.
-- These duplicate records will be removed during cleaning.
-- The raw payments table remains unchanged during profiling.
+-- 50 payment IDs and 50 transaction IDs appear more than once.
+-- Each duplicated payment ID appears exactly twice.
+-- Inspection confirms that all 50 duplicated payment_id pairs are exact duplicates across all nine columns.
+-- Inspection also confirms that the duplicated transaction_id records are exact duplicates.
+-- These exact duplicate records will be removed during the cleaning stage.
+
 
 
 ============================================================
