@@ -664,6 +664,11 @@ SELECT
 FROM raw.payments
 WHERE payment_date IS NULL
 
+SELECT COUNT(*) AS missing_payment_method
+FROM raw.payments
+WHERE payment_method IS NULL;
+-- No NULL payment_method values were identified.
+
 -- Check for empty or whitespace-only payment IDs
 SELECT
     COUNT(*) AS blank_payment_id
@@ -694,6 +699,10 @@ SELECT
 FROM raw.payments
 WHERE TRIM(payment_date) = ''
 
+SELECT COUNT(*) AS blank_payment_method
+FROM raw.payments
+WHERE TRIM(payment_method) = '';
+
 /*
 FINDING:
 -- No NULL or blank payment_id values were identified.
@@ -701,6 +710,7 @@ FINDING:
 -- No NULL or blank customer_id values were identified.
 -- No NULL or blank subscription_id values were identified.
 -- No NULL or blank payment_date values were identified.
+-- No NULL or empty or whitespace-only payment_method values were identified.
 */
 
 
@@ -898,7 +908,10 @@ WHERE subscription_id <> TRIM(subscription_id);
 -- No leading or trailing spaces were detected in subscription_id.
 -- Subscription IDs appear consistently formatted with respect to surrounding whitespace.
 
--- PAYMENT DATE FORMATTING CONSISTENCY
+-- =========================================================
+-- PAYMENTS: PAYMENT_DATE FORMATTING CONSISTENCY
+-- =========================================================
+
 SELECT
     payment_date
 FROM raw.payments
@@ -907,6 +920,85 @@ WHERE payment_date <> TRIM(payment_date);
 -- FINDINGS:
 -- No leading or trailing spaces were detected in payment_date.
 -- Payment dates appear consistently formatted with respect to surrounding whitespace.
+
+
+-- =========================================================
+-- PAYMENTS: PAYMENT_METHOD FORMATTING CONSISTENCY
+-- =========================================================
+
+SELECT
+    payment_method AS original_value,
+    TRIM(payment_method) AS cleaned_value
+FROM raw.payments
+WHERE payment_method <> TRIM(payment_method);
+
+-- FINDINGS:
+-- Leading and/or trailing spaces were identified in some payment_method values.
+-- These inconsistencies will be standardized during cleaning.
+
+
+-- =========================================================
+-- PAYMENTS: PAYMENT_METHOD CAPITALIZATION CONSISTENCY
+-- =========================================================
+
+SELECT
+    UPPER(TRIM(payment_method)) AS normalized_method,
+    COUNT(DISTINCT payment_method) AS original_variations
+FROM raw.payments
+GROUP BY UPPER(TRIM(payment_method))
+HAVING COUNT(DISTINCT payment_method) > 1;
+
+-- FINDINGS:
+-- Four underlying payment methods were identified:
+-- Bank Transfer, Credit Card, Debit Card, and M-Pesa.
+-- These inconsistencies will be standardized during cleaning.
+
+
+-- =========================================================
+-- PAYMENTS: PAYMENT_METHOD FREQUENCY
+-- =========================================================
+
+SELECT
+    payment_method,
+    COUNT(*) AS payment_count
+FROM raw.payments
+GROUP BY payment_method
+ORDER BY payment_count DESC;
+
+-- FINDINGS:
+-- Four main payment method categories were identified.
+-- Some records appear as separate categories because of leading and/or trailing whitespace.
+-- A total of 151 records were identified in the whitespace variations shown in the query results.
+
+
+-- =========================================================
+-- PAYMENTS: PAYMENT_METHOD DISTINCT CATEGORIES
+-- =========================================================
+
+SELECT DISTINCT
+    UPPER(TRIM(payment_method)) AS payment_method
+FROM raw.payments
+ORDER BY UPPER(TRIM(payment_method));
+
+-- FINDINGS:
+-- Four distinct payment methods were identified after
+-- trimming surrounding whitespace and standardizing case.
+-- The methods are Bank Transfer, Credit Card, Debit Card,
+-- and M-Pesa.
+-- No unexpected payment method categories were identified.
+
+
+-- =========================================================
+-- PAYMENTS: PAYMENT_METHOD INTERNAL WHITESPACE
+-- =========================================================
+
+SELECT DISTINCT
+    payment_method
+FROM raw.payments
+WHERE payment_method LIKE '%  %';
+
+-- FINDINGS:
+-- No payment_method values containing two consecutive spaces were identified.
 
 --============================================================
 --PAYMENTS: DATE FORMATS
